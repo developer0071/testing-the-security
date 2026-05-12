@@ -1,0 +1,38 @@
+name: Synthetic Target Monitor
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: 'Target URL to execute against'
+        required: true
+        default: 'https://silkhire.uz/'
+
+jobs:
+  execute-monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Initialize Python Environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install System Dependencies
+        run: |
+          pip install playwright
+          playwright install --with-deps chromium
+
+      - name: Execute Headless Engine
+        run: python monitor.py --url ${{ github.event.inputs.target_url }}
+
+      # The 'always()' condition ensures you get the screenshot even if the Python script crashes
+      - name: Upload Visual Telemetry
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: execution-telemetry
+          path: artifacts/*.png
+          retention-days: 7
