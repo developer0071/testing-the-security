@@ -1,0 +1,40 @@
+name: Silkhire Heavy Load Test
+
+on:
+  workflow_run:
+    workflows: ["Synthetic Target Monitor"]
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      virtual_users:
+        description: 'Number of concurrent users (e.g., 50)'
+        required: true
+        default: '50'
+      duration:
+        description: 'Duration of the stress test (e.g., 30s, 1m)'
+        required: true
+        default: '30s'
+
+jobs:
+  execute-k6-stress-test:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install k6 Load Tester
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+
+      - name: Execute 50-User Stress Wave
+        run: |
+          VUS=${{ github.event.inputs.virtual_users || 50 }}
+          DURATION=${{ github.event.inputs.duration || '30s' }}
+          k6 run --vus $VUS --duration $DURATION stress_engine.js

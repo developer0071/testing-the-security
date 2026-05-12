@@ -28,7 +28,6 @@ jobs:
         with:
           python-version: '3.11'
 
-      # Critical Fix: Added 'faker' here so the python script can generate real names
       - name: Install System Dependencies
         run: |
           pip install playwright faker
