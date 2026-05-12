@@ -7,6 +7,14 @@ on:
         description: 'Target URL to execute against'
         required: true
         default: 'https://silkhire.uz/'
+      user_count:
+        description: 'Number of test users to create'
+        required: true
+        default: '5'
+      delay_ms:
+        description: 'Delay between creations (ms)'
+        required: true
+        default: '2000'
 
 jobs:
   execute-monitor:
@@ -26,9 +34,9 @@ jobs:
           playwright install --with-deps chromium
 
       - name: Execute Headless Engine
-        run: python monitor.py --url ${{ github.event.inputs.target_url }}
+        # Passes all three variables from the UI to the Python script
+        run: python monitor.py --url ${{ github.event.inputs.target_url }} --limit ${{ github.event.inputs.user_count }} --delay ${{ github.event.inputs.delay_ms }}
 
-      # The 'always()' condition ensures you get the screenshot even if the Python script crashes
       - name: Upload Visual Telemetry
         if: always()
         uses: actions/upload-artifact@v4
