@@ -8,13 +8,13 @@ on:
         required: true
         default: 'https://silkhire.uz/'
       user_count:
-        description: 'Number of test users to create'
+        description: 'Total number of users to create'
         required: true
         default: '5'
-      delay_ms:
-        description: 'Delay between creations (ms)'
+      concurrency:
+        description: 'Parallel workers (Keep between 3-5 for Actions)'
         required: true
-        default: '2000'
+        default: '3'
 
 jobs:
   execute-monitor:
@@ -28,14 +28,14 @@ jobs:
         with:
           python-version: '3.11'
 
+      # Critical Fix: Added 'faker' here so the python script can generate real names
       - name: Install System Dependencies
         run: |
-          pip install playwright
+          pip install playwright faker
           playwright install --with-deps chromium
 
-      - name: Execute Headless Engine
-        # Passes all three variables from the UI to the Python script
-        run: python monitor.py --url ${{ github.event.inputs.target_url }} --limit ${{ github.event.inputs.user_count }} --delay ${{ github.event.inputs.delay_ms }}
+      - name: Execute High-Speed Engine
+        run: python monitor.py --url ${{ github.event.inputs.target_url }} --limit ${{ github.event.inputs.user_count }} --concurrency ${{ github.event.inputs.concurrency }}
 
       - name: Upload Visual Telemetry
         if: always()

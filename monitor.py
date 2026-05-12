@@ -1,87 +1,93 @@
 import os
 import time
 import argparse
-from playwright.sync_api import sync_playwright
+import asyncio
+from playwright.async_api import async_playwright
+from faker import Faker
 
-def run_provisioning(target_url, limit, delay_ms):
-    print(f"Initiating bulk registration test on: {target_url}")
-    print(f"Target: {limit} users. Delay: {delay_ms}ms between requests.")
+# Initialize the Faker generator
+fake = Faker()
+
+async def register_user(browser, target_url, i, limit):
+    print(f"--- Firing User Registration {i+1}/{limit} ---")
+    context = await browser.new_context(viewport={"width": 1280, "height": 720})
+    page = await context.new_page()
+    
+    try:
+        response = await page.goto(target_url, wait_until="domcontentloaded", timeout=30000)
+        if response.status >= 400:
+            raise Exception(f"HTTP Error: {response.status}")
+
+        await page.get_by_role("link", name="Sign in").click()
+        
+        await page.wait_for_selector("text='Create account'", state="visible")
+        await page.get_by_text("Create account").first.click()
+        
+        await page.wait_for_selector("text='Job Seeker'", state="visible")
+        await page.get_by_text("Job Seeker").click()
+
+        # Generate realistic human data
+        bot_first_name = fake.first_name()
+        bot_last_name = fake.last_name()
+        
+        # Create an organic-looking email (e.g., john.doe.17155000@gmail.com)
+        test_email = f"{bot_first_name.lower()}.{bot_last_name.lower()}.{int(time.time())}.{i+1}@gmail.com"
+        
+        print(f"Injecting organic data: {bot_first_name} {bot_last_name} ({test_email})")
+        
+        await page.get_by_placeholder("Jahongir").fill(bot_first_name)
+        await page.get_by_placeholder("Djurayev").fill(bot_last_name)
+        await page.get_by_placeholder("you@example.com").fill(test_email)
+        
+        passwords = page.locator('input[type="password"]')
+        await passwords.first.fill("TestSecure123!")
+        await passwords.last.fill("TestSecure123!")
+        
+        await page.get_by_role("button", name="Create account").last.click()
+        
+        # Validate success by looking for the newly generated organic name on the dashboard
+        await page.wait_for_selector(f"text='{bot_first_name} {bot_last_name}'", state="visible", timeout=20000) 
+        
+        print(f"[✓] Success: {test_email}")
+        
+        if i == limit - 1:
+            await page.screenshot(path="artifacts/final_success_state.png")
+
+    except Exception as e:
+        print(f"[✗] Iteration {i+1} failed: {e}")
+        await page.screenshot(path=f"artifacts/error_state_loop_{i+1}.png")
+    finally:
+        await context.close()
+
+async def run_provisioning_async(target_url, limit, concurrency):
+    print(f"Initiating HIGH-SPEED bulk registration on: {target_url}")
+    print(f"Target: {limit} users. Executing {concurrency} in parallel.")
     
     os.makedirs("artifacts", exist_ok=True)
-    delay_sec = delay_ms / 1000.0
-
-    with sync_playwright() as p:
-        # High-efficiency cloud arguments
-        browser = p.chromium.launch(
+    
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(
             headless=True,
-            args=['--disable-dev-shm-usage', '--no-sandbox', '--incognito']
+            args=['--disable-dev-shm-usage', '--no-sandbox', '--incognito', '--disable-gpu']
         )
 
-        for i in range(limit):
-            print(f"\n--- Starting User Registration {i+1}/{limit} ---")
-            
-            # Opening a fresh context per user ensures zero cookie/cache crossover
-            context = browser.new_context(viewport={"width": 1280, "height": 720})
-            page = context.new_page()
+        sem = asyncio.Semaphore(concurrency)
 
-            try:
-                response = page.goto(target_url, wait_until="networkidle", timeout=30000)
-                if response.status >= 400:
-                    raise Exception(f"HTTP Error: {response.status}")
+        async def bounded_register(i):
+            async with sem:
+                await register_user(browser, target_url, i, limit)
 
-                # 1. Click initial Sign in
-                page.get_by_role("link", name="Sign in").click()
-                
-                # 2. Wait for the UI to hydrate, then click the text (bypassing strict HTML tags)
-                page.wait_for_selector("text='Create account'", state="visible")
-                page.get_by_text("Create account").first.click()
-                
-                # 3. Select the role
-                page.wait_for_selector("text='Job Seeker'", state="visible")
-                page.get_by_text("Job Seeker").click()
+        tasks = [bounded_register(i) for i in range(limit)]
+        await asyncio.gather(*tasks)
 
-                # Generate a unique tracking email for this specific loop iteration
-                test_email = f"qa.bot.{int(time.time())}.{i+1}@gmail.com"
-                
-                print(f"Injecting data: {test_email}")
-                page.get_by_placeholder("Jahongir").fill("QABot")
-                page.get_by_placeholder("Djurayev").fill(f"Test{i+1}")
-                page.get_by_placeholder("you@example.com").fill(test_email)
-                
-                page.locator('input[type="password"]').first.fill("TestSecure123!")
-                page.locator('input[type="password"]').last.fill("TestSecure123!")
-                
-                # Submit using the .last locator to hit the actual submit button at the bottom
-                page.get_by_role("button", name="Create account").last.click()
-                
-                # Wait for dashboard redirect to confirm success
-                page.wait_for_url("**/search", timeout=20000) 
-                
-                print(f"[✓] Success: {test_email}")
-                
-                # Capture a screenshot of the final iteration to prove it finished
-                if i == limit - 1:
-                    page.screenshot(path="artifacts/final_success_state.png")
-
-            except Exception as e:
-                print(f"[✗] Iteration {i+1} failed: {e}")
-                page.screenshot(path=f"artifacts/error_state_loop_{i+1}.png")
-                # We don't raise the error here, so the loop can try the next user if one fails
-            finally:
-                context.close() # Clean up RAM before the next iteration
-                
-            if i < limit - 1:
-                print(f"Waiting {delay_ms}ms before next registration...")
-                time.sleep(delay_sec)
-
-        browser.close()
+        await browser.close()
         print("\nProvisioning sequence complete.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--url", required=True, help="Target URL")
-    parser.add_argument("--limit", type=int, default=1, help="Number of users to create")
-    parser.add_argument("--delay", type=int, default=1000, help="Delay in ms between registrations")
+    parser.add_argument("--url", required=True)
+    parser.add_argument("--limit", type=int, default=1)
+    parser.add_argument("--concurrency", type=int, default=3) 
     args = parser.parse_args()
     
-    run_provisioning(target_url=args.url, limit=args.limit, delay_ms=args.delay)
+    asyncio.run(run_provisioning_async(args.url, args.limit, args.concurrency))
