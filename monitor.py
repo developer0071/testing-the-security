@@ -29,22 +29,32 @@ def run_provisioning(target_url, limit, delay_ms):
                 if response.status >= 400:
                     raise Exception(f"HTTP Error: {response.status}")
 
+                # 1. Click initial Sign in
                 page.get_by_role("link", name="Sign in").click()
-                page.get_by_role("button", name="Create account").click()
+                
+                # 2. Wait for the UI to hydrate, then click the text (bypassing strict HTML tags)
+                page.wait_for_selector("text='Create account'", state="visible")
+                page.get_by_text("Create account").first.click()
+                
+                # 3. Select the role
+                page.wait_for_selector("text='Job Seeker'", state="visible")
                 page.get_by_text("Job Seeker").click()
 
                 # Generate a unique tracking email for this specific loop iteration
                 test_email = f"qa.bot.{int(time.time())}.{i+1}@gmail.com"
                 
                 print(f"Injecting data: {test_email}")
-                page.get_by_placeholder("Jahongir").fill(f"QABot")
+                page.get_by_placeholder("Jahongir").fill("QABot")
                 page.get_by_placeholder("Djurayev").fill(f"Test{i+1}")
                 page.get_by_placeholder("you@example.com").fill(test_email)
                 
                 page.locator('input[type="password"]').first.fill("TestSecure123!")
                 page.locator('input[type="password"]').last.fill("TestSecure123!")
                 
+                # Submit using the .last locator to hit the actual submit button at the bottom
                 page.get_by_role("button", name="Create account").last.click()
+                
+                # Wait for dashboard redirect to confirm success
                 page.wait_for_url("**/search", timeout=20000) 
                 
                 print(f"[✓] Success: {test_email}")
